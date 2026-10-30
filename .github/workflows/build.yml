@@ -15,15 +15,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Finds the folder that contains settings.gradle.kts, wherever it is in the repo.
+      - name: Locate Gradle project
+        id: loc
+        run: |
+          f=$(find . -name settings.gradle.kts -not -path "./.git/*" | head -n 1)
+          if [ -z "$f" ]; then
+            echo "::error::No settings.gradle.kts found in the repository. Extract the zip and upload the extracted files (not the .zip itself)."
+            ls -R | head -60
+            exit 1
+          fi
+          dir=$(dirname "$f")
+          echo "Gradle project found in: $dir"
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # The Android SDK is preinstalled on GitHub's ubuntu runners, so no
-      # separate SDK setup action is needed. Licenses are accepted here as a
-      # safety net (failures are ignored because they are normally already accepted).
       - name: Accept Android SDK licenses
         continue-on-error: true
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
@@ -34,11 +45,12 @@ jobs:
           gradle-version: '8.5'
 
       - name: Build debug APK
+        working-directory: ${{ steps.loc.outputs.dir }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: OpenCam-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: ${{ steps.loc.outputs.dir }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
